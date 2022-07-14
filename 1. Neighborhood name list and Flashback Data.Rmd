@@ -1,0 +1,495 @@
+---
+title: "1. Neighborhood name list and Flashback Data"
+author: "Lijun Peng"
+date: "24/5/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Library
+```{r}
+library(tibble)
+library(dplyr)
+library(qdap)
+library(tidytext)
+library(tm)
+library(ggplot2)
+library(tidyverse)
+library(sp)
+library(sf)
+library(rnaturalearth)
+library(rgeos)
+library(rgdal)
+library(osmar)
+library(osmdata)
+library(knitr)
+library(kableExtra)
+library(lubridate)
+```
+
+Extract neighborhood name from OpenStreetMap #####
+
+# Import RegSO shapefile
+```{r}
+library(sf)
+deso_geo <- st_read("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/GIS data/deso_2018_2021-10-21/DeSO_2018_v2.gpkg")
+reso_geo <- st_read("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/GIS data/regso_2018_v1_20211103/RegSO_2018_v1.gpkg")
+```
+# Check RegSO shapefile properties
+```{r}
+# Checking properties
+class(deso_geo)
+dim(deso_geo)
+#dataonly_deso <- st_drop_geometry(deso_geo)
+st_geometry_type(deso_geo)
+st_crs(deso_geo)
+st_bbox(deso_geo)
+getClass("Spatial")
+
+dim(deso_geo_Stkh)
+length(unique(deso_geo_Stkh$deso))
+```
+# Get Stockholm neighborhood names from OSM, suburb
+```{r}
+# The definition of "suburb" is: "A part of a town or city with a well-known name and often a distinct identity."
+# So I only select "suburb"
+
+stkh_osm_suburb <- opq(bbox = "Stockholm County (54391)") %>% 
+  add_osm_feature(key = "place", value = c("suburb")) %>% 
+  osmdata_sf()
+
+Encoding(stkh_osm_suburb$osm_points$name) <- "UTF-8"
+Encoding(stkh_osm_suburb$osm_lines$name) <- "UTF-8"
+Encoding(stkh_osm_suburb$osm_polygons$name) <- "UTF-8"
+Encoding(stkh_osm_suburb$osm_multipolygons$name) <- "UTF-8"
+
+stkh_osm_suburb_points <- tibble(unique(na.omit(stkh_osm_suburb$osm_points$name)))
+colnames(stkh_osm_suburb_points) <- "name"
+
+stkh_osm_suburb_lines <- tibble(unique(na.omit(stkh_osm_suburb$osm_lines$name)))
+colnames(stkh_osm_suburb_lines) <- "name"
+
+stkh_osm_suburb_polygons <- tibble(unique(na.omit(stkh_osm_suburb$osm_polygons$name)))
+colnames(stkh_osm_suburb_polygons) <- "name"
+
+stkh_osm_suburb_multipolygons <- tibble(unique(na.omit(stkh_osm_suburb$osm_multipolygons$name)))
+colnames(stkh_osm_suburb_multipolygons) <- "name"
+
+# There variable has 215 names
+stkh_osm_suburb_names <- stkh_osm_suburb_points %>% 
+  bind_rows(stkh_osm_suburb_lines, stkh_osm_suburb_polygons, stkh_osm_suburb_multipolygons) %>% 
+  unique()
+```
+# Export OSM neighborhood name list
+```{r}
+osm_neighbor_names <- write.table(stkh_osm_suburb_names, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Neighborhood names/osm_suburb_names.txt", fileEncoding = "UTF-8")
+```
+# Check OSM map division: suburb + neighbourhood
+```{r}
+stkh_osm <- opq(bbox = "Stockholm County (54391)") %>% 
+  add_osm_feature(key = "place", value = c("suburb","neighbourhood")) %>% 
+  osmdata_sf()
+
+Encoding(stkh_osm$osm_points$name) <- "UTF-8"
+Encoding(stkh_osm$osm_lines$name) <- "UTF-8"
+Encoding(stkh_osm$osm_polygons$name) <- "UTF-8"
+Encoding(stkh_osm$osm_multipolygons$name) <- "UTF-8"
+
+stkh_osm_points <- tibble(unique(na.omit(stkh_osm$osm_points$name)))
+colnames(stkh_osm_points) <- "name"
+
+stkh_osm_lines <- tibble(unique(na.omit(stkh_osm$osm_lines$name)))
+colnames(stkh_osm_lines) <- "name"
+
+stkh_osm_polygons <- tibble(unique(na.omit(stkh_osm$osm_polygons$name)))
+colnames(stkh_osm_polygons) <- "name"
+
+stkh_osm_multipolygons <- tibble(unique(na.omit(stkh_osm$osm_multipolygons$name)))
+colnames(stkh_osm_multipolygons) <- "name"
+
+# There variable has 339 names
+stkh_osm_names <- stkh_osm_points %>% 
+  bind_rows(stkh_osm_lines, stkh_osm_polygons, stkh_osm_multipolygons) %>% 
+  unique()
+
+# Export OSM neighborhood name listo< suburb + neighborhood
+name_suburb_neigh <- write.csv(stkh_osm_names, "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/GIS data/name_suburb_neigh.txt", fileEncoding = "UTF-8")
+```
+# Check OSM map division: "city","borough","suburb","quarter","neighbourhood", "city_block"
+```{r}
+# It's unnecessary to check "region, district and municipality" level. The result is " $osm_points : 'sf' Simple Features Collection with 31 points". I already have the municipalities names.
+stkh_osm_1 <- opq(bbox = "Stockholm County (54391)") %>%
+  add_osm_feature(key = 'place', value = c("region","district", "municipality")) %>%
+  #add_osm_feature(key = 'place', value = 'municipality') %>%
+  osmdata_sf()
+na.omit(stkh_osm_1$osm_points$name)
+#===============================================================================
+stkh_osm_2 <- opq(bbox = "Stockholm County (54391)") %>% 
+  add_osm_feature(key = "place", value = c("city","borough","suburb","quarter","neighbourhood", "city_block")) %>% 
+  osmdata_sf()
+
+Encoding(stkh_osm_2$osm_lines$name) <- "UTF-8"
+Encoding(stkh_osm_2$osm_polygons$name) <- "UTF-8"
+Encoding(stkh_osm_2$osm_multipolygons$name) <- "UTF-8"
+
+stkh_osm_2_lines <- tibble(unique(na.omit(stkh_osm_2$osm_lines$name)))
+colnames(stkh_osm_2_lines) <- "name"
+
+stkh_osm_2_polygons <- tibble(unique(na.omit(stkh_osm_2$osm_polygons$name)))
+colnames(stkh_osm_2_polygons) <- "name"
+
+stkh_osm_2_multipolygons <- tibble(unique(na.omit(stkh_osm_2$osm_multipolygons$name)))
+colnames(stkh_osm_2_multipolygons) <- "name"
+
+# There variable has 3,342 names
+stkh_osm_2_names <- stkh_osm_2_lines %>% 
+  bind_rows(stkh_osm_2_polygons, stkh_osm_2_multipolygons) %>% 
+  unique()
+#===============================================================================
+# "town","village","hamlet"
+
+stkh_osm_3 <- opq(bbox = "Stockholm County (54391)") %>% 
+  add_osm_feature(key = "place", value = c("town","village","hamlet")) %>% 
+  osmdata_sf()
+
+Encoding(stkh_osm_3$osm_points$name) <- "UTF-8"
+#Encoding(stkh_osm_3$osm_lines$name) <- "UTF-8"
+Encoding(stkh_osm_3$osm_polygons$name) <- "UTF-8"
+#Encoding(stkh_osm_3$osm_multilines$name) <- "UTF-8"
+
+stkh_osm_3_points <- tibble(unique(na.omit(stkh_osm_3$osm_points$name)))
+colnames(stkh_osm_3_points) <- "name"
+
+stkh_osm_3_lines <- tibble(unique(na.omit(stkh_osm_3$osm_lines$name)))
+colnames(stkh_osm_3_lines) <- "name"
+
+stkh_osm_3_polygons <- tibble(unique(na.omit(stkh_osm_3$osm_polygons$name)))
+colnames(stkh_osm_3_polygons) <- "name"
+
+stkh_osm_3_multipolygons <- tibble(unique(na.omit(stkh_osm_3$osm_multipolygons$name)))
+colnames(stkh_osm_3_multipolygons) <- "name"
+
+# There variable has 82 names
+stkh_osm_3_names <- stkh_osm_3_points %>% 
+  bind_rows(stkh_osm_3_lines, stkh_osm_3_polygons, stkh_osm_3_multipolygons) %>% 
+  unique()
+
+```
+# *Combine neighborhood name lists (Kommunnamn + RegSO + OSM)*
+```{r}
+combine_name <- read.csv("New name with kommunname.csv", encoding = "UTF-8")
+combine_name_features <- combine_name %>% 
+  count(X.U.FEFF.Kommunnamn, sort = T)
+ggplot(data = combine_name_features, aes(y = reorder(X.U.FEFF.Kommunnamn, n), x = n)) + 
+  geom_bar(stat = "identity") +
+  scale_x_continuous(breaks = c(3,10,20,30,40,143)) +
+  ggtitle("The distribution neighborhood names by county")
+```
+# *Import RegSO names (483)*
+```{r}
+# 483 regso names, after remove 39 names with multiple locations and with common meaning, this df has municipalities
+regso_name_aggtdegso_ori <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/SCB-demographic data/regso_names_wo_multi.csv", encoding = "UTF-8")
+colnames(regso_name_aggtdegso_ori) <- c("kommun","regso","new_name")
+
+# In this regso and new name list, 10 new names have multiple regso names, other names are the same in "regso" and "new_name", so use this list is used to aggregate regso names and regso demographical data.
+# column "regso" has 483 unique regso names
+# column "new_names" has 473 unique regso names, 10 of regso have new names
+regso_name_aggtdegso <- regso_name_aggtdegso_ori %>% 
+  select(-1)
+
+# 483 names, this df can remove unwanted regso names
+regso_aggname_only <- tibble(regso_name_aggtdegso_ori[,2])
+colnames(regso_aggname_only) <- "regso"
+
+```
+# *Import neighborhood name list (709)*
+```{r}
+#RegSO + DeSO + OSM + FC6ramlingar + Utsatta omrC%den names
+# 709 neighborhood names, full list
+neighbor_namelist <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Neighborhood names/New name with kommunname.csv", encoding = "UTF-8")
+colnames(neighbor_namelist) <- c("Kommunnamn", "namelist")
+#convert names to lowcase
+neighbor_namelist$namelist <- tolower(neighbor_namelist$namelist)
+```
+
+Extract neighborhood post (Posts that include neighborhod names) #####
+
+# *Extract posts that only contain neighborhood names*
+## Import Flashback raw data by parts (The total posts have 13 GB)
+```{r}
+#Import Flashback data, home, society and lifestyle; hem : 3505126
+hem_all <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/hem.csv", encoding = "UTF-8")
+#                nrows = 1000)
+hem <- hem_all[,c(1,2,8)]
+
+# livsstil: 802353
+livsstil_all <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/livsstil.csv", encoding = "UTF-8")
+livsstil <- livsstil_all[,c(1,2,8)]
+
+# samhC$lle: 9748101
+samhalle_all <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle.csv", encoding = "UTF-8")
+samhalle <- samhalle_all[,c(1,2,8)]
+samhalle1 <- samhalle_all[1:2500000,]
+samhalle1_save <- write.csv(samhalle1,file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle1_save.csv", fileEncoding = "UTF-8")
+
+samhalle2 <- samhalle_all[2500001:5000000,]
+samhalle2_save <- write.csv(samhalle2,file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle2_save.csv", fileEncoding = "UTF-8")
+
+samhalle3 <- samhalle_all[5000001:7500000,]
+samhalle3_save <- write.csv(samhalle3,file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle3_save.csv", fileEncoding = "UTF-8")
+
+samhalle4 <- samhalle_all[7500001:9748101,]
+samhalle4_save <- write.csv(samhalle4,file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle4_save.csv", fileEncoding = "UTF-8")
+```
+## str_detect Function-- Exact match. Find posts that include neighborhood names exactly 
+```{r}
+extractrows2 <- function(neighborhood,flashback,post) {
+  require(stringr)
+  flashback[str_detect(as.character(flashback[[post]]),regex(paste("\\b",neighborhood,"\\b"), ignore_case = TRUE)),] %>% 
+    bind_cols(name = neighborhood)
+}
+#test
+# hem_test_sample <- hem[1:10,]
+# test_ool <- extractrows2("Intressant",hem_test_sample,"posting_wo_quote")
+# test_ool
+```
+## Due the big size of data, loop each dataset one after one. Loop livsstil
+```{r}
+livsstil_post <- lapply(as.character(neighbor_namelist$namelist),extractrows2,flashback=livsstil,post="posting_wo_quote")
+livsstil_just_post_allv <- do.call(rbind.data.frame, livsstil_post)
+livsstil_just_post <- livsstil_just_post_allv[,c(1,2,4,3)]
+# save data. allv means all variables
+livsstil_just_post_save <- write.csv(livsstil_just_post, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/livsstil_just_post_save.csv", fileEncoding = "UTF-8")
+livsstil_just_post_save_allv <- write.csv(livsstil_just_post_allv, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/livsstil_just_post_save_allv.csv", fileEncoding = "UTF-8")
+```
+## loop hem
+```{r}
+hem_post <- lapply(as.character(neighbor_namelist$namelist),extractrows2,flashback=hem,post="posting_wo_quote")
+hem_just_post <- do.call(rbind.data.frame, hem_post)
+hem_just_post <- hem_just_post[,c(1,2,4,3)]
+# save data
+hem_just_post_save <- write.csv(hem_just_post, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/hem_just_post_save.csv", fileEncoding = "UTF-8")
+```
+## loop samhalle
+```{r}
+samhalle_post1 <- lapply(as.character(neighbor_namelist$namelist),extractrows2,flashback=samhalle1,post="posting_wo_quote")
+samhalle_just_post11 <- do.call(rbind.data.frame, samhalle_post1)
+samhalle_just_post1 <- samhalle_just_post11[,c(1,2,9,8)]
+# save data
+samhalle_just_post_save1 <- write.csv(samhalle_just_post1, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle_just_post_save1.csv", fileEncoding = "UTF-8")
+samhalle_just_post_save1_allv <- write.csv(samhalle_just_post11, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle_just_post_save1_allv.csv", fileEncoding = "UTF-8")
+
+# import data2
+samhalle2 <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle2_save.csv", encoding = "UTF-8")
+samhalle_post2 <- lapply(as.character(neighbor_namelist$namelist),extractrows2,flashback=samhalle2,post="posting_wo_quote")
+samhalle_just_post22 <- do.call(rbind.data.frame, samhalle_post2)
+samhalle_just_post2 <- samhalle_just_post22[,c(2,3,10,9)]
+# save data
+samhalle_just_post_save2 <- write.csv(samhalle_just_post2, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle_just_post_save2.csv", fileEncoding = "UTF-8")
+samhalle_just_post_save2_allv <- write.csv(samhalle_just_post22, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle_just_post_save2_allv.csv", fileEncoding = "UTF-8")
+
+# import data3
+samhalle3 <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle3_save.csv", encoding = "UTF-8")
+samhalle_post3 <- lapply(as.character(neighbor_namelist$namelist),extractrows2,flashback=samhalle3,post="posting_wo_quote")
+samhalle_just_post33 <- do.call(rbind.data.frame, samhalle_post3)
+samhalle_just_post3 <- samhalle_just_post33[,c(2,3,10,9)]
+# save data
+samhalle_just_post_save3 <- write.csv(samhalle_just_post3, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle_just_post_save3.csv", fileEncoding = "UTF-8")
+samhalle_just_post_save3_allv <- write.csv(samhalle_just_post33, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle_just_post_save3_allv.csv", fileEncoding = "UTF-8")
+
+# import data4
+samhalle4 <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle4_save.csv", encoding = "UTF-8")
+samhalle_post4 <- lapply(as.character(neighbor_namelist$namelist),extractrows2,flashback=samhalle4,post="posting_wo_quote")
+samhalle_just_post44 <- do.call(rbind.data.frame, samhalle_post4)
+samhalle_just_post4 <- samhalle_just_post44[,c(2,3,10,9)]
+# save data
+samhalle_just_post_save4 <- write.csv(samhalle_just_post4, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle_just_post_save4.csv", fileEncoding = "UTF-8")
+samhalle_just_post_save4_allv <- write.csv(samhalle_just_post44, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle_just_post_save4_allv.csv", fileEncoding = "UTF-8")
+```
+## conbine posts that contain neighborhood names among 3 sub-forums
+```{r}
+# livsstil
+posts_livsstil <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/livsstil_just_post_save.csv", encoding = "UTF-8")
+
+# hem
+posts_hem <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/hem_just_post_save.csv", encoding = "UTF-8")
+
+# samhC$lle
+samhalle_post1 <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle_just_post_save1.csv", encoding = "UTF-8")
+samhalle_post2 <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle_just_post_save2.csv", encoding = "UTF-8")
+samhalle_post3 <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle_just_post_save3.csv", encoding = "UTF-8")
+samhalle_post4 <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/samhalle_just_post_save4.csv", encoding = "UTF-8")
+
+posts_samhalle <- rbind(samhalle_post1, samhalle_post2, samhalle_post3, samhalle_post4)
+
+# combine all
+posts_neighbor <- rbind(posts_livsstil, posts_hem, posts_samhalle)
+posts_neighbor_save <- write.csv(posts_neighbor, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/posts_neighbor_save_3.csv", fileEncoding = "UTF-8")
+```
+# *Import selected posts (i.e., neighborhood-post)*
+```{r}
+# the data is posts that contain neighborhood names, one post can have several names, so 194,572 are not unique posts
+posts_neighbor_all <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/posts_neighbor_save_3.csv", encoding = "UTF-8")
+
+# Extract year
+# library(lubridate)
+posts_neighbor_all$date <- as_date(posts_neighbor_all$date)
+posts_neighbor_all$year <- as.numeric(format(posts_neighbor_all$date,"%Y"))
+
+# unique posts_neighbor, 149,864
+posts_neighbor_all_uniq <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/posts_neighbor_all_uniq_save_3.csv", encoding = "UTF-8") %>% 
+  select(-1)
+```
+# *Data process*
+## 1. Descrip_data table
+### 1.1 Total posts: Hem, bostad & familj + Livsstil + Society
+### 1.2 Total posts that contains neighborhood names in Stockholm County
+### 1.3 Number of neighborhood names
+### 1.4 Number of neighborhood names that be mentioned
+Table 2 Descriptive statistics for posts and neighborhood names
+```{r}
+#1. Total posts: Hem, bostad & familj + Livsstil + Samh??lle
+Total_posts <- 3505126 + 802353 + 9748101
+#2. Total posts that contains neighborhood names in Stockholm l??n
+Total_select_posts <- length(unique(posts_neighbor_all$posting_wo_quote))
+#3. Number of neighborhood names
+Num_names <- length(neighbor_namelist$namelist)
+#4. Number of neighborhood names that be mentioned
+Num_mentioned_names <- length(unique(posts_neighbor_all$name))
+#5. Number of RegSO names
+#Num_regso <- length(unique(regso_aggname_only$regso))
+Num_regso <- 522
+#6. Number of final RegSO name
+Num_agg_regso <- 473
+# mention names in RegSO
+Num_regso_mention <- 229
+
+perc_post <- 100
+perc_select <- as.integer(Total_select_posts/Total_posts * 100)
+perc_name <- 100
+perc_mentioned_name <- as.integer(Num_mentioned_names/Num_names * 100)
+perc_regso <- 100
+perc_agg_regso <- as.integer(Num_agg_regso/Num_regso * 100)
+perc_mentioned_regso <- as.integer(Num_regso_mention/Num_regso * 100)
+
+percs <- tibble( perc_select, perc_post, perc_mentioned_name, perc_name,
+                perc_agg_regso, perc_mentioned_regso, perc_regso) %>% 
+  pivot_longer(everything(), names_to = "Description", values_to = "Percentage (%)")
+percs$Description <- c("Percent of selected posts",
+                       NA,
+                       "Percent of mentioned names",
+                       NA,
+                       "Percent of adjusted RegSO names",
+                       "Percent of mentioned RegSO naems",
+                       NA)
+
+descrip_data <- tibble(Total_select_posts,Total_posts, Num_mentioned_names,Num_names, 
+                       Num_agg_regso,Num_regso_mention,Num_regso) %>% 
+  pivot_longer(everything(), names_to = "Post and name", values_to = "Number")
+descrip_data$`Post and name` <- c("Selected posts","Total posts", "Mentioned names","Neighborhoods", "Adjusted RegSO names","Mentioned names in RegSO","RegSO")
+
+name_descriptive_table <- cbind(descrip_data, percs)
+
+#5. Descrip_data table
+options(knitr.kable.NA = '')
+name_descriptive_table <- replace(name_descriptive_table, name_descriptive_table==100, "")
+
+flashback_table <- knitr::kable(name_descriptive_table, align = "lclc", digits = 0,
+                             format.args = list(big.mark = ",", scientific = FALSE),
+                             #caption = "Table 1 Neighborhood names descriptive statistics",
+                             booktabs = T) %>% 
+  kable_classic(full_width = F, html_font = "Cambria") %>% 
+  kable_styling(latex_options = "hold_position") %>% 
+  pack_rows("Post",1,2) %>% 
+  pack_rows("Nieghborhood name",3,4) %>% 
+  pack_rows("RegSO name",5,7) %>% 
+  kableExtra::footnote(general = "Here are the sources of the data",
+           number = c("souce: Posts come from a Swedish online open forum Flashback. Three sub-forums are included: a) Home, house and family (Hem,bostad & familj); b) Society (Samh??lle); and c) Lifestyle (livsstil)",
+                    "Neighborhood names come from RegSo, OSM, F??rsamlingar and Utsatta omr??den.", 
+                    "RegSo is Sweden regional statistical areas; OSM is the OpenStreetMap;", 
+                    "F??rsamlingar is the church division in Sweden;", "Utsatta omr??den is vulnerable areas that listed by police, these places are characterized by a low socio-economic status and high crime rate.", 
+                    "Adjusted RegSO names are RegSO names after remove names with genernal meaning and multiple locations."),
+           fixed_small_size = TRUE, 
+           footnote_as_chunk = TRUE, 
+           threeparttable = F)  
+knitr::kable(replace(flashback_table, flashback_table==100, ""))
+flashback_table
+
+```
+## 2. The distribution of neighborhood names by kommun (county).
+```{r}
+name_freq_by_municipality <- neighbor_namelist %>% 
+  count(Kommunnamn, sort = T) %>% 
+  ggplot(aes(x = n, y = reorder(Kommunnamn, n))) +
+  geom_bar(stat = "identity") +
+  ggtitle("Figure 1 The distribution of neighborhood names by municipality") +
+  xlab("Number of neighborhoods") +
+  ylab("Kommun namn (Municipality name)") +
+  theme_classic()
+name_freq_by_municipality 
+```
+## 3. Aggregate selected posts by year
+## Figure 1. Yearly total neighborhoods mentions on Flashback from 2000 to 2021 
+```{r}
+posts_neighbor_all_byyear <- posts_neighbor_all %>% 
+  count(year)
+#plot(posts_neighbor_all_byyear)
+
+posts_neighbor_all_byyear_plot <- ggplot(posts_neighbor_all_byyear, aes(x = year, y = n)) +
+  geom_line() +
+  #ggtitle("Figure 2 The distribution of neighborhoods mentions by year") +
+  xlab("Year") +
+  ylab("Mentions") +
+  scale_x_continuous(breaks = c(2000,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021)) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.2)) +
+  labs(caption = "Source: Flashback posts")
+ggsave("posts_neighbor_all_byyear_plot.png", width = 20, height = 10, units = c("cm"), dpi = 1000)
+
+```
+## 4. Display Flashback subtitles
+Appendix 1.1. Flashback subtitles, forum: Home
+Appendix 1.2. Flashback subtitles, forum: Lifestyle
+Appendix 1.3. Flashback subtitles, forum: Society
+```{r}
+sbuforums_title <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Draft/figure_table_map/forums' titles.csv", encoding = "UTF-8")
+colnames(sbuforums_title) <- c("Forums","Sub-forums","Frequency")
+rownames(sbuforums_title) <- NULL
+
+title_home <- knitr::kable(sbuforums_title[sbuforums_title$Forums == "Home",],
+             format.args = list(big.mark = ",", scientific = FALSE), booktab = T) %>% 
+                             #caption = "Table  Flashback subforum title") %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(latex_options = "hold_position") %>% 
+  kableExtra::footnote(general = "Source: Flashback posts",
+           fixed_small_size = TRUE, 
+           footnote_as_chunk = F, 
+           threeparttable = F)
+
+
+title_lifestyle <- knitr::kable(sbuforums_title[sbuforums_title$Forums == "Lifestyle",],
+             format.args = list(big.mark = ",", scientific = FALSE), booktab = T) %>% 
+                             #caption = "Table  Flashback subforum title") %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(latex_options = "hold_position") %>% 
+  kableExtra::footnote(general = "Source: Flashback posts",
+           fixed_small_size = TRUE, 
+           footnote_as_chunk = F, 
+           threeparttable = F)
+
+
+title_society <- knitr::kable(sbuforums_title[sbuforums_title$Forums == "Society",],
+             format.args = list(big.mark = ",", scientific = FALSE), booktab = T) %>% 
+                             #caption = "Table  Flashback subforum title") %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(latex_options = "hold_position") %>% 
+  kableExtra::footnote(general = "Source: Flashback posts",
+           fixed_small_size = TRUE, 
+           footnote_as_chunk = F, 
+           threeparttable = F)
+
+```
