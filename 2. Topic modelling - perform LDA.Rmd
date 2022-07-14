@@ -1,0 +1,460 @@
+---
+title: "2. Topic modelling - perform LDA"
+author: "Lijun Peng"
+date: "3/22/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Library
+```{r}
+library(tibble)
+library(dplyr)
+library(qdap)
+library(tidytext)
+library(tm)
+library(ggplot2)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(lda)
+library(topicmodels)
+library(lubridate)
+library(quanteda)
+library(ldatuning)
+library(SnowballC)
+library(seededlda)
+library(textmineR)
+```
+# 1. Import data
+## *Import selected posts (i.e., neighborhood-post)*
+## Remove duplicate posts. One post can mention several neighborhoods.
+```{r}
+posts_neighbor_all <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/posts_neighbor_save_3.csv", encoding = "UTF-8") %>% 
+  select(-1)
+# Extract year
+# library(lubridate)
+posts_neighbor_all$date <- as_date(posts_neighbor_all$date)
+posts_neighbor_all$year <- as.numeric(format(posts_neighbor_all$date,"%Y"))
+# unique posts
+posts_neighbor_all_uniq <- posts_neighbor_all %>% 
+  select(year, url, posting_wo_quote) %>% 
+  unique(.) %>% 
+  mutate(id_num = as.character(1:n())) %>%
+  mutate(id = paste0(.$id, .$url)) %>% 
+  select(id, year, url, posting_wo_quote)
+posts_neighbor_all_uniq_save <- write.csv(posts_neighbor_all_uniq, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/posts_neighbor_all_uniq_save_3.csv", fileEncoding = "UTF-8")
+
+# unique posts_neighbor, 149,864
+posts_neighbor_all_uniq <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Flashback Data/posts_neighbor_all_uniq_save_3.csv", encoding = "UTF-8")
+```
+## *Import RegSO names (483)*
+```{r}
+# 483 regso names, after remove 39 names with multiple locations and with common meaning, this df has municipalities
+regso_name_aggtdegso_ori <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/SCB-demographic data/regso_names_wo_multi.csv", encoding = "UTF-8")
+colnames(regso_name_aggtdegso_ori) <- c("kommun","regso","new_name")
+
+# In this regso and new name list, 10 new names have multiple regso names, other names are the same in "regso" and "new_name", so use this list is used to aggregate regso names and regso demographical data.
+# column "regso" has 483 unique regso names
+# column "new_names" has 473 unique regso names, 10 of regso have new names
+regso_name_aggtdegso <- regso_name_aggtdegso_ori %>% 
+  select(-1)
+
+# 483 names, this df can remove unwanted regso names
+regso_aggname_only <- tibble(regso_name_aggtdegso_ori[,2])
+colnames(regso_aggname_only) <- "regso"
+```
+
+# 2. LDA data preparation 
+## 2.1 stopwords. Some posts are English. So I combine English and Swedish stopwords after remove some English words that have different meaning in Swedish. I added some words that I found from preliminary LDA models.
+```{r}
+se_stopwords <- tibble(stopwords::stopwords("sv", source = "stopwords-iso"))
+colnames(se_stopwords) <- "word"
+
+se_stopwords <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/se_stopwords_save.txt", encoding = "UTF-8") %>% 
+  select(2)
+
+se_stopwords_stem <- se_stopwords %>% 
+  mutate(stem = wordStem(word, language = "sv")) %>% 
+  select(stem)
+colnames(se_stopwords_stem) <- "word"
+
+se_stopwords_conbine <- se_stopwords %>% 
+  left_join(se_stopwords_stem, by = "word")
+
+# English stop words
+en_stopwords <- tibble(stopwords::stopwords("en", source = "stopwords-iso")) 
+colnames(en_stopwords) <- "word"
+# Those words in Swedish have meaning, so remove them
+en_stopwords_removenot <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/English stop words-do not remove.csv", encoding = "UTF-8")
+colnames(en_stopwords_removenot) <- "word"
+# Final English stop words list
+en_stopwords <- en_stopwords %>% 
+  anti_join(en_stopwords_removenot) %>% 
+  unique(.)
+
+my_stopwords <- bind_rows(se_stopwords_conbine, en_stopwords,
+                           tibble(word = c("http","https","www","ska","bara", "lite",
+                                           "skulle vilja",
+                                           "se","com","finns","vill","dom","ocks??",
+                                           "ser","ok","OK","Ok","fb", "09",
+                                           "01","02","03","04","05","06","07","08",
+                                           letters, LETTERS,
+                                           as.character(0:3000)))) %>% 
+  filter(word != "v??nster") %>% 
+  filter(word != "v??nstra") %>% 
+  unique(.)
+
+my_stopwords_save <- write.csv(my_stopwords, "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/my_stopwords_save.csv", fileEncoding = "UTF-8")
+
+# load final stopwords
+# stopwords: the R package https://cran.r-project.org/web/packages/stopwords/readme/README.html
+my_stopwords <- read.csv("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/my_stopwords_save.csv", encoding = "UTF-8")
+
+my_stopwords2 <- as.character(my_stopwords$word)
+```
+## 2.2 create a DTM - data term matrix
+```{r}
+library(textmineR)
+dtm <- CreateDtm(doc_vec = posts_neighbor_all_uniq$posting_wo_quote, # character vector of documents
+                 doc_names = posts_neighbor_all_uniq$id, # document names
+                 ngram_window = c(1, 1),#, # minimum and maximum n-gram length
+                 stopword_vec = my_stopwords2, # stopwords
+                 lower = TRUE, # lowercase
+                 remove_punctuation = TRUE, # punctuation
+                 remove_numbers = TRUE, # numbers
+                 stem_lemma_function = function(x) SnowballC::wordStem(x, "sv"),
+                 verbose = TRUE) # Turn off status bar for this demo
+
+# The following codes are used to check the frequency of terms and decide how many terms from the bottom or top should be removed
+quantile(colSums(dtm))
+quantile(colSums(dtm),0.05)
+quantile(colSums(dtm),0.95)
+#dtm_reduce <- dtm[,colSums(dtm) > quantile(colSums(dtm),0.01)] 
+#dtm_reduce <- dtm[,colSums(dtm) > 5 & colSums(dtm) < quantile(colSums(dtm),0.99)]
+dtm_reduce <- dtm[,colSums(dtm) > 100]
+quantile(colSums(dtm_reduce))
+```
+# 3. Fit LDA model
+```{r}
+## Reference: https://cran.r-project.org/web/packages/textmineR/vignettes/c_topic_modeling.html
+## Reference: https://github.com/ccs-amsterdam/r-course-material/blob/master/tutorials/r_text_lda.md
+set.seed(125)
+k = 60
+iterations = 1000
+burnin = 200
+alpha = 0.1 # topics over documents
+beta = 0.05 # words over topics
+
+lda_model <- FitLdaModel(dtm = dtm_reduce, 
+                         k = k,
+                         iterations = iterations,
+                         burnin = burnin,
+                         alpha = alpha,
+                         beta = beta,
+                         optimize_alpha = TRUE,
+                         calc_likelihood = TRUE,
+                         calc_coherence = TRUE,
+                         calc_r2 = TRUE)
+```
+# 4. load LDA result from the package textmineR
+## 4.1 Organize the outcomes of LDA in a readable table. The table can provide some insights but not used for furthre analysis 
+```{r}
+final_k45 <- readRDS("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/results/final_lda_all_posts_k45_a0.1_b0.1dtm100 (1).rds")
+doc_prob <- as.data.frame(lda_model$theta)
+# Get the top terms of each topic
+lda_model$top_terms <- GetTopTerms(phi = lda_model$phi, M = 20)
+# topics in/out of docuemnts. 
+lda_model$prevalence <- colSums(lda_model$theta) / sum(lda_model$theta) * 100
+# textmineR has a naive topic labeling tool based on probable bigrams
+lda_model$labels <- LabelTopics(assignments = lda_model$theta > 0.05, 
+                            dtm = dtm_posts,
+                            M = 1)
+
+# put them together, with coherence into a summary table
+lda_model$summary <- data.frame(topic = rownames(lda_model$phi),
+                            label = lda_model$labels,
+                            coherence = round(lda_model$coherence, 3),
+                            prevalence = round(lda_model$prevalence,3),
+                            top_terms = apply(lda_model$top_terms, 2, function(x){
+                              paste(x, collapse = ", ")
+                            }),
+                            stringsAsFactors = FALSE)
+
+lda_model_summary <- lda_model$summary[ order(lda_model$summary$prevalence, decreasing = TRUE) , ]#[ 1:10 , ]
+lda_model_summary_save <- write.table(lda_model_summary, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/results/lda_model_summary.txt", fileEncoding = "UTF-8")
+```
+## 4.2 Process LDA results. Interpret topics by reading top terms and posts
+## read posts in detail
+```{r}
+final_k45 <- readRDS("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/results/final_lda_all_posts_k45_a0.1_b0.1dtm100 (1).rds")
+library(tibble)
+library(xtable)
+top_terms <- GetTopTerms(phi = final_k45$phi, M = 30) %>% 
+  as.data.frame() %>% 
+  select(36,13,1,19,28,29)
+colnames(top_terms) <- c("high status","crime","immigrant","traffic","housing queue","criminal gang")
+
+# put top terms in a table
+knitr::kable(top_terms,
+             format.args = list(big.mark = ",", scientific = FALSE)) %>% 
+                             #caption = "Table  Flashback subforum title") %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(latex_options = "hold_position") %>% 
+  kableExtra::footnote(general = "Source: Author's calcualtion",
+           fixed_small_size = TRUE, 
+           footnote_as_chunk = F, 
+           threeparttable = F)
+
+# check document probability for each topic
+doc_topic_prop <- as.data.frame(final_k45$theta)
+doc_topic_prop <- tibble::rownames_to_column(doc_topic_prop, "id")
+
+# choose one topic to read the top 20-50 terms
+doc_topic_read <- doc_topic_prop %>% 
+  select(1,20) %>% 
+  slice_max(t_19, n = 20)
+
+# find the url of posts for check the original post or thread title on Flashback
+top_post_read_url <- posts_neighbor_all_uniq %>% 
+  filter(id %in% doc_topic_read$id) 
+top_post_read_url
+
+# read the top posts from topic
+top_post_read <- posts_neighbor_all_uniq %>% 
+  filter(id %in% doc_topic_read$id) %>% 
+  select(5)
+a <- top_post_read
+```
+## 4.3 Top terms
+Appendix 3 Top 20 terms from selected topics
+```{r}
+final_k45 <- readRDS("D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/results/final_lda_all_posts_k45_a0.1_b0.1dtm100 (1).rds")
+library(tibble)
+top_terms <- GetTopTerms(phi = final_k45$phi, M = 30) %>% 
+  as.data.frame() %>% 
+  select(36,13,1,19,28,29)
+colnames(top_terms) <- c("high status","crime","immigrant","traffic","housing queue","criminal gang")
+
+knitr::kable(top_terms,
+             format.args = list(big.mark = ",", scientific = FALSE), booktab = T) %>% 
+                             #caption = "Table  Flashback subforum title") %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(latex_options = "hold_position") %>% 
+  kableExtra::footnote(general = "Source: Author's calculation",
+           fixed_small_size = TRUE, 
+           footnote_as_chunk = F, 
+           threeparttable = F)
+
+```
+# 5. Neighborhoods' list of posts. Each neighborhood has a list of posts that the neighborhood is mentioned
+## 5.1 Function: neighborhood post list
+```{r}
+regso_name_aggtdegso_ori <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/SCB-demographic data/regso_names_wo_multi.csv", encoding = "UTF-8")
+colnames(regso_name_aggtdegso_ori) <- c("kommun","regso","new_name")
+
+extractrows3 <- function(neighborhood,flashback,post) {
+  require(stringr)
+  flashback[str_detect(as.character(flashback[[post]]),regex(paste("\\b",neighborhood,"\\b"), ignore_case = TRUE)),] %>% 
+    bind_cols(name = neighborhood) %>% 
+    select(id, name)
+}
+```
+## 5.2 Extract each name's list of posts
+```{r}
+id_name <- lapply(as.character(regso_name_aggtdegso_ori$regso), extractrows3, flashback = posts_neighbor_all_uniq, post = "posting_wo_quote")
+saveRDS(id_name, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/all_post_LDA/id_name.rds")
+```
+## 5.3 Function: calculate average probability of neighborhood on each topic (finally use k = 45, 45 topics)
+```{r}
+calculate_tmean_all <- function(id_name,lda_doc_prop) {
+  name_prop <- as.data.frame(id_name) %>% 
+  left_join(lda_doc_prop, by = "id") %>% 
+  mutate(meant1 = mean(t_1)) %>% 
+  mutate(meant2 = mean(t_2),
+         meant3 = mean(t_3),
+         meant4 = mean(t_4),
+         meant5 = mean(t_5),
+         meant6 = mean(t_6),
+         meant7 = mean(t_7),
+         meant8 = mean(t_8),
+         meant9 = mean(t_9),
+         meant10 = mean(t_10),
+         meant11 = mean(t_11),
+         meant12 = mean(t_12),
+         meant13 = mean(t_13),
+         meant14 = mean(t_14),
+         meant15 = mean(t_15),
+         meant16 = mean(t_16),
+         meant17 = mean(t_17),
+         meant18 = mean(t_18),
+         meant19 = mean(t_19),
+         meant20 = mean(t_20),
+         meant21 = mean(t_21),
+         meant22 = mean(t_22),
+         meant23 = mean(t_23),
+         meant24 = mean(t_24),
+         meant25 = mean(t_25),
+         meant26 = mean(t_26),
+         meant27 = mean(t_27),
+         meant28 = mean(t_28),
+         meant29 = mean(t_29),
+         meant30 = mean(t_30),
+         meant31 = mean(t_31),
+         meant32 = mean(t_32),
+         meant33 = mean(t_33),
+         meant34 = mean(t_34),
+         meant35 = mean(t_35),
+         meant36 = mean(t_36),
+         meant37 = mean(t_37),
+         meant38 = mean(t_38),
+         meant39 = mean(t_39),
+         meant40 = mean(t_40),
+         meant41 = mean(t_41),
+         meant42 = mean(t_42),
+         meant43 = mean(t_43),
+         meant44 = mean(t_44),
+         meant45 = mean(t_45)) %>% 
+  #select(name, meant4, meant5,mean12,mean13,mean16,mean17,mean29,mean36) %>% 
+  unique(.)
+}
+```
+## 5.4 calculate the probability of each neighborhood on each topic
+```{r}
+name_prop <- lapply(id_name, calculate_tmean_all, doc_topic_prop)
+name_prop_df_all <- do.call(rbind.data.frame, name_prop)
+name_prop_df <- name_prop_df_all %>% 
+  select(2,48:92) %>% 
+  unique(.)
+
+name_prop_topic_agg <- name_prop_df %>% 
+  left_join(regso_name_aggtdegso, by = c("name" = "regso")) %>% 
+  select(-1)
+
+name_prop_topic_agg <- aggregate(. ~ new_name, FUN = sum, data = name_prop_topic_agg)
+write.csv(name_prop_topic_agg, file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/all_post_LDA/name_prop_topic_agg.csv", fileEncoding = "UTF-8")
+```
+# 6. Sample 10,000 data from posts_neighbor_all, tokenize - stem - dfm - dtm
+## 6.1 sample data to test the package "topicmodels"
+```{r}
+sample_posts <- posts_neighbor_all_uniq[sample(nrow(posts_neighbor_all_uniq), 10000, replace = FALSE, prob = NULL),] %>% 
+  mutate(id = 1:n()) #%>% 
+  #mutate(id = paste("doc", id, sep = "")) %>% 
+  #mutate(name_year = paste(name, year, id))
+
+library(SnowballC)
+sample_posts_uniq_tidy <- sample_posts %>% 
+  unnest_tokens(word, posting_wo_quote) %>% 
+  anti_join(my_stopwords) %>% 
+  mutate(stem = wordStem(word, language = "sv")) %>%
+  anti_join(my_stopwords, by = ("stem" = "word")) %>% 
+  count(id, stem) 
+
+sample_dfm_posts <- sample_posts_uniq_tidy %>% 
+  cast_dfm(document = id, term = stem, value = n)
+
+sample_dtm_posts <- convert(sample_dfm_posts, to = "topicmodels") 
+```
+# 7. Test the optimal number of topics
+## 7.1 sample data for metrics
+```{r}
+#library(ldatuning)
+sample_posts_metrics <- posts_neighbor_all_uniq[sample(nrow(posts_neighbor_all_uniq), 50000, replace = FALSE, prob = NULL),]
+# tidy
+sample_metrics_posts_uniq_tidy <- sample_posts_metrics %>%
+  unnest_tokens(word, posting_wo_quote) %>%
+  anti_join(my_stopwords) %>%
+  mutate(stem = wordStem(word, language = "sv")) %>%
+  anti_join(my_stopwords, by = ("stem" = "word")) %>%
+  count(id, stem, sort = T) %>% 
+  bind_tf_idf(stem, id, n) %>%
+  arrange(desc(tf_idf)) %>% 
+  filter(nchar(stem) > 3) # remove stems that equal and less than three letters
+
+head0.05 <- quantile(sample_metrics_posts_uniq_tidy$tf_idf, 0.05)
+tail0.05 <- quantile(sample_metrics_posts_uniq_tidy$tf_idf, 0.95)
+# remvoe the top and bottom 5% frequent stems
+sample_metrics_posts_uniq_tidy <- sample_metrics_posts_uniq_tidy%>% 
+  filter(tf_idf > head0.05) %>% 
+  filter(tf_idf < tail0.05) %>% 
+  select(-4,-5,-6)
+
+sample_metrics_posts_uniq_tidy_save <- write.csv(sample_metrics_posts_uniq_tidy,
+        file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/number of topics/sample_metrics_posts_uniq_tidy.csv", 
+        fileEncoding = "UTF-8")
+```
+## 7.2 Run metrics, "Griffiths2004", "CaoJuan2009", "Arun2010", "Deveaud2014"
+```{r}
+# reference: https://cran.r-project.org/web/packages/ldatuning/vignettes/topics.html
+# impot tidy sample data
+sample_metrics_posts_uniq_tidy <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/number of topics/sample_metrics_posts_uniq_tidy.csv", encoding = "UTF-8")
+# dtm
+dtm_sample_posts_metrics <- sample_metrics_posts_uniq_tidy %>%
+  cast_dtm(document = id, term = stem, value = n)
+
+# metrics
+library(ldatuning)
+result <- FindTopicsNumber(
+  dtm_sample_posts_metrics,
+  topics = seq(from = 2, to = 200, by = 1),
+  metrics = c("Griffiths2004", "CaoJuan2009", "Arun2010", "Deveaud2014"),
+  method = "Gibbs",
+  control = list(seed = 66),
+  mc.cores = 2L,
+  verbose = TRUE
+)
+FindTopicsNumber_plot(result)
+```
+## 7.3 Plot outcomes from 4 metrics, full data
+Appendix 2 Optimal numbers of topic
+```{r}
+metrics_2_20 <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/number of topics/result2_20_save.csv", fileEncoding = "UTF-8")
+metrics_21_40 <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/number of topics/result21_40_save.csv", fileEncoding = "UTF-8")
+metrics_41_60 <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/number of topics/result41_60_save.csv", fileEncoding = "UTF-8")
+metrics_61_80 <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/number of topics/result61_80_save.csv", fileEncoding = "UTF-8")
+metrics_81_100 <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/number of topics/result81_100_save.csv", fileEncoding = "UTF-8")
+metrics_101_120 <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/number of topics/result101_120_save.csv", fileEncoding = "UTF-8")
+
+# combine metrics outcomes
+metrics_df <- rbind(metrics_2_20, metrics_21_40, metrics_41_60, metrics_61_80, metrics_81_100, metrics_101_120) %>% 
+   arrange(topics) %>% 
+  filter(topics %in% 39:65)
+# plot
+FindTopicsNumber_plot(metrics_df)
+
+# save plot
+ggsave("metrics_df.png", width = 50, height = 30, units = c("cm"), dpi = 1000, limitsize = FALSE)
+
+# check single metric
+metrics_df %>% 
+  slice_max(Deveaud2014 ,n = 5)
+metrics_df %>% 
+  slice_min(Arun2010  ,n = 5)
+```
+## 7.3.1 Outcome from metric of number of topics, 50,000 sample
+```{r}
+sample_metrics_2_20 <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/number of topics/sample_result2_20_save.csv", fileEncoding = "UTF-8")
+sample_metrics_21_40 <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/number of topics/sample_result21_40_save.csv", fileEncoding = "UTF-8")
+sample_metrics_41_60 <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/number of topics/sample_result41_60_save.csv", fileEncoding = "UTF-8")
+sample_metrics_61_80 <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/number of topics/sample_result61_80_save.csv", fileEncoding = "UTF-8")
+sample_metrics_81_100 <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/number of topics/sample_result81_100_save.csv", fileEncoding = "UTF-8")
+sample_metrics_101_120 <- read.csv(file = "D:/Nutstore no sync files/233-LIU/233.15-Master Thesis/Topic modelling/number of topics/sample_result101_120_save.csv", fileEncoding = "UTF-8")
+
+#combine data
+sample_metrics_df <- rbind(sample_metrics_2_20, sample_metrics_21_40, sample_metrics_41_60, sample_metrics_61_80, 
+                    sample_metrics_81_100, sample_metrics_101_120) %>% 
+  arrange(topics)
+
+# plot  
+FindTopicsNumber_plot(sample_metrics_df)
+
+# check single metric
+sample_metrics_df %>% 
+  slice_max(Deveaud2014 ,n = 5)
+
+sample_metrics_df %>% 
+  slice_min(Arun2010 ,n = 5)
+```
