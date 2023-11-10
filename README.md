@@ -1,2 +1,0 @@
-# Thesis title: 
-## This repository 
