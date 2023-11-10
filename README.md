@@ -9,8 +9,6 @@ Neighborhood reputations are the opinions and assessments ascribed to them by re
 **Keywords** Neighborhoods reputation, Text analysis, Topic modeling, LDA, Flashback
 
 # Codes description
-## Programming language: R
-## Version of program: R version 4.0.4 (2021-02-15)
 
 ## 1. Neighborhood name list and Flashback Data.Rmd
 This file includes forming a neighborhood name list, extracting neighborhood-related posts and listing descriptive statistics for selected posts. Neighborhood names were extracted from OpenStreetMap at the "suburb" level (Padgham & Lovelace, 2022) combining neighborhood names from other 3 sources: Sweden regional statistical areas (RegSo, Församlingar (parish division), Utsatta områden (vulnerable areas listed by police). I wrote a function to detect the posts that include neighborhood names from the name list (i.e., neighborhood posts). Neighborhood yearly mentions on the Swedish online open forum were plotted in this file.
@@ -28,6 +26,10 @@ The file has the following processes:
 6.	Finally, I mapped (Nowosad, 2021; Tennekes et al., 2022) demographics and topic scores for Stockholm County and Stockholm municipality.
 
 ## Packages: 
+Programming language: R
+
+Version of program: R version 4.0.4 (2021-02-15)
+
 "tibble"	
 "knitr"	
 "tidyverse"
