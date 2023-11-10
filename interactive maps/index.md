@@ -17,3 +17,39 @@ Supervisor: Benjamin Jarvis, Hendrik Erz
 - [Topic High status]()  
 - [Topic housing queue]()  
 - [Topic immigrant]() 
+
+### Programming info
+ 
+Programming language: R
+
+Version of program: R version 4.0.4 (2021-02-15)
+
+Packages:  
+"tibble"	
+"knitr"	
+"tidyverse"
+"dplyr"	
+"kableExtra"	
+"knitr"
+"qdap"	
+"lubridate"	
+"kableExtra"
+"tidytext"	
+"tibble"	
+"topicmodels"
+"tm"	
+"dplyr"	
+"lubridate"
+"ggplot2"	
+"qdap"	
+"quanteda"
+"tidyverse"
+"tidytext"	
+"ldatuning"
+"rgeos"	
+"tm"	
+"SnowballC"
+"rgdal"	
+"ggplot2"	
+"textmineR"
+"stopwords"
