@@ -4,6 +4,8 @@ Master thesis: Using Topic Modelling to Explore the Association between Neighbor
 Lijun Peng, Linköping University  
 Supervisor: Benjamin Jarvis, Hendrik Erz
 
+This paper examines the relationship between online neighborhood reputations and neighborhood demographic composition in Stockholm municipality in Sweden. I use topic modeling to measure the various dimensions of neighborhood reputations on Flashback (a Swedish online open forum). Results imply that ethnic composition in neighborhoods, residents' financial status and education attachments can also influence the online reputations of communities.
+
 ## Here are some interactive maps
 ### Maps for neighborhood demographics in Stockholm municipality 
 - [The precentage of high economic standard residents in neighborhoods in Stockholm municipality]()
