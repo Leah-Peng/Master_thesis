@@ -8,7 +8,7 @@ This paper examines the relationship between online neighborhood reputations and
 
 ## Here are some interactive maps
 ### Maps for neighborhood demographics in Stockholm municipality 
-- [The precentage of high economic standard residents in neighborhoods in Stockholm municipality](https://sipet.se/wp-content/stkhmaps/stkh_high_eco_map.html)
+- [The precentage of high economic standard residents in neighborhoods in Stockholm municipality](https://sipet.se/wp-content/stkhmaps/stkh_higheco_map.html)
 - [% low economic standard](https://sipet.se/wp-content/stkhmaps/stkh_loweco_map.html)
 - [% high eudcation attachment](https://sipet.se/wp-content/stkhmaps/stkh_highedu_map.html)
 - [% low education attachment](https://sipet.se/wp-content/stkhmaps/stkh_lowedu_map.html)
@@ -18,7 +18,7 @@ This paper examines the relationship between online neighborhood reputations and
 - [Topic Crime](https://sipet.se/wp-content/stkhmaps/stkh_crime_topic_map.html) 
 - [Topic High status](https://sipet.se/wp-content/stkhmaps/stkh_high_status_topic_map.html)  
 - [Topic housing queue](https://sipet.se/wp-content/stkhmaps/stkh_housing_queue_topic_map.html)  
-- [Topic immigrant](https://sipet.se/wp-content/stkhmaps/stkh_immigrant_topic_maps.html) 
+- [Topic immigrant](https://sipet.se/wp-content/stkhmaps/stkh_immigrant_topic_map.html) 
 
 ### Programming info
  
