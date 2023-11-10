@@ -12,7 +12,7 @@ This paper examines the relationship between online neighborhood reputations and
 - [% low economic standard]()
 - [% high eudcation attachment]()
 - [% low education attachment]()
-- [% of non-European residnets](https://sipet.se/wp-content/stkhmaps/stkh_nonEU_map.html)
+- [% of non-European residents](https://sipet.se/wp-content/stkhmaps/stkh_nonEU_map.html)
 
 ### Maps for the probability of the neighborhood being linked to topics
 - [Topic Crime]() 
