@@ -1,4 +1,4 @@
-theme: jekyll-theme-midnight
+theme: Architect theme
 title: "Using Topic Modelling to Explore the Association between Neighborhood Reputations and Demographic Composition: A study of an online forum in Sweden"
 Author: Lijun Peng
 Description: This is a master thesis. It examines the relationship between online neighborhood reputations and neighborhood demographic composition in Stockholm municipality in Sweden. I use topic modeling to measure the various dimensions of neighborhood reputations on Flashback (a Swedish online open forum). Results imply that ethnic composition, financial status and education can also influence the online reputations of communities.
