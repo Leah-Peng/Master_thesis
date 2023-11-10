@@ -18,7 +18,7 @@ This paper examines the relationship between online neighborhood reputations and
 - [Topic Crime](https://sipet.se/wp-content/stkhmaps/stkh_crime_topic_map.html) 
 - [Topic High status](https://sipet.se/wp-content/stkhmaps/stkh_high_status_topic_map.html)  
 - [Topic housing queue](https://sipet.se/wp-content/stkhmaps/stkh_housing_queue_topic_map.html)  
-- [Topic_immigrant](https://sipet.se/wp-content/stkhmaps/stkh_immigrant_topic_map.html) 
+- [Topic immigrant](https://sipet.se/wp-content/stkhmaps/stkh_immigrant_topic_map.html) 
 
 ### Programming info
  
